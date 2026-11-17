@@ -412,6 +412,97 @@ td.ap { color: var(--gold); font-weight: 500; }
 .warn { color: var(--neg); }
 .msg { font-size: 11px; color: var(--tx3); margin-top: 8px; min-height: 16px; }
 
+/* Pie carousel — um gráfico por vez */
+.pie-carousel { position: relative; }
+.pie-track {
+  display: flex;
+  width: 100%;
+  transition: transform .28s ease;
+  will-change: transform;
+}
+.pie-carousel { overflow: hidden; }
+.pie-slide {
+  flex: 0 0 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+.pie-slide-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.pie-slide-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--tx3);
+  align-self: flex-start;
+  width: 100%;
+}
+.pie-svg { width: 168px; height: 168px; flex-shrink: 0; }
+.pie-legend {
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pie-leg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--tx2);
+}
+.pie-dot {
+  width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0;
+}
+.pie-leg b {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--tx);
+  font-variant-numeric: tabular-nums;
+}
+.pie-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.pie-nav button.pie-arrow {
+  width: 28px; height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--tx2);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pie-nav button.pie-arrow:hover { background: var(--s2); color: var(--tx); }
+.pie-dots { display: flex; gap: 6px; align-items: center; }
+.pie-dot-nav {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--line);
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+.pie-dot-nav.on { background: var(--gold); width: 8px; height: 8px; }
+.pie-hint {
+  font-size: 10px;
+  color: var(--tx3);
+  text-align: center;
+  margin-top: 6px;
+}
+
 /* Modal */
 .overlay {
   position: fixed; inset: 0; z-index: 200;
@@ -692,6 +783,27 @@ function fillRF(){
   $('#rfc').innerHTML=[...m].map(([k,n])=>`<option value="${esc(k)}"${k==cfg.rfc?' selected':''}>${esc(n)}</option>`).join('')||'<option value="">—</option>';
 }
 
+const PIE_COLORS=['#c9a227','#3d9b6e','#5b8def','#c45c5c','#9b7bdf','#c9922a','#4db6ac','#8b93ab','#e07a5f','#81b29a'];
+function pieSVG(items){
+  /* items: [{label, value}] value = fraction 0..1, already sorted */
+  const total=items.reduce((s,i)=>s+i.value,0)||1;
+  const cx=80,cy=80,r=72,ri=38;
+  let a0=-Math.PI/2, paths='';
+  items.forEach((it,idx)=>{
+    const a1=a0+(it.value/total)*Math.PI*2;
+    const x0=cx+r*Math.cos(a0), y0=cy+r*Math.sin(a0);
+    const x1=cx+r*Math.cos(a1), y1=cy+r*Math.sin(a1);
+    const xi0=cx+ri*Math.cos(a1), yi0=cy+ri*Math.sin(a1);
+    const xi1=cx+ri*Math.cos(a0), yi1=cy+ri*Math.sin(a0);
+    const large=(a1-a0)>Math.PI?1:0;
+    const d=`M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} L${xi0} ${yi0} A${ri} ${ri} 0 ${large} 0 ${xi1} ${yi1} Z`;
+    paths+=`<path d="${d}" fill="${PIE_COLORS[idx%PIE_COLORS.length]}"/>`;
+    a0=a1;
+  });
+  const legend=items.map((it,idx)=>`<div class="pie-leg"><span class="pie-dot" style="background:${PIE_COLORS[idx%PIE_COLORS.length]}"></span><span>${esc(it.label)}</span><b>${P(it.value/total)}</b></div>`).join('');
+  return `<svg class="pie-svg" viewBox="0 0 160 160" aria-hidden="true">${paths}</svg><div class="pie-legend">${legend}</div>`;
+}
+
 function run(){
   save(); renderList(); fillRF();
   const R=$('#res');
@@ -781,7 +893,59 @@ function run(){
       }).join('')}
     </table>
     <p class="note">Valores em dólar e euro convertidos pela cotação informada (PTAX venda). Números no padrão brasileiro. Sugestão de alocação — não constitui recomendação de investimento.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-h">Composição ${ap>0?'após aporte':'atual'}</div>
+    <div class="pie-carousel" id="pie-carousel">
+      <div class="pie-track" id="pie-track">
+        <div class="pie-slide">
+          <div class="pie-slide-inner">
+            <div class="pie-slide-title">Por classe</div>
+            ${pieSVG([...cg.values()].map(o=>({label:o.n,value:(o.b+(ap>0?o.c:0))/T||0})).filter(i=>i.value>0.0005).sort((a,b)=>b.value-a.value))}
+          </div>
+        </div>
+        <div class="pie-slide">
+          <div class="pie-slide-inner">
+            <div class="pie-slide-title">Por ativo</div>
+            ${pieSVG(rows.map(r=>({label:r.a.n,value:(r.b+(ap>0?r.c:0))/T||0})).filter(i=>i.value>0.0005).sort((a,b)=>b.value-a.value))}
+          </div>
+        </div>
+      </div>
+      <div class="pie-nav">
+        <button type="button" class="pie-arrow" id="pie-prev" aria-label="Anterior">‹</button>
+        <div class="pie-dots">
+          <button type="button" class="pie-dot-nav on" data-i="0" aria-label="Por classe"></button>
+          <button type="button" class="pie-dot-nav" data-i="1" aria-label="Por ativo"></button>
+        </div>
+        <button type="button" class="pie-arrow" id="pie-next" aria-label="Próximo">›</button>
+      </div>
+      <p class="pie-hint">1 · Classes &nbsp;|&nbsp; 2 · Ativos — use as setas ou deslize</p>
+    </div>
   </div>`;
+
+  /* carrossel de pizzas */
+  (function(){
+    let idx=0;
+    const track=$('#pie-track'), dots=[...document.querySelectorAll('.pie-dot-nav')];
+    const go=i=>{
+      idx=(i+2)%2;
+      track.style.transform=`translateX(-${idx*100}%)`;
+      dots.forEach((d,j)=>d.classList.toggle('on',j===idx));
+    };
+    $('#pie-prev').onclick=()=>go(idx-1);
+    $('#pie-next').onclick=()=>go(idx+1);
+    dots.forEach(d=>d.onclick=()=>go(+d.dataset.i));
+    /* swipe touch */
+    let x0=null;
+    const car=$('#pie-carousel');
+    car.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
+    car.addEventListener('touchend',e=>{
+      if(x0==null)return;
+      const dx=e.changedTouches[0].clientX-x0; x0=null;
+      if(Math.abs(dx)>40)go(idx+(dx<0?1:-1));
+    },{passive:true});
+  })();
 
   $('#cp').onclick=async()=>{
     const el=$('#card-aporte');
