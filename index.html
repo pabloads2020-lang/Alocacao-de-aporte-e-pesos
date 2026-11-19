@@ -160,7 +160,7 @@ label {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   width: 100%;
   max-width: min(1280px, 100%);
   box-sizing: border-box;
@@ -169,10 +169,35 @@ label {
   max-width: 100%;
   min-width: 0;
 }
+aside.stack,
+main.stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+main.stack > .card:last-of-type {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+main.stack > .card:last-of-type .pie-carousel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .lbl-short { display: none; }
 
 @media (max-width: 960px) {
-  .wrap { grid-template-columns: 1fr; padding: 12px; }
+  .wrap { grid-template-columns: 1fr; padding: 12px; align-items: start; }
+  aside.stack,
+  main.stack { height: auto; }
+  main.stack > .card:last-of-type {
+    flex: none;
+    min-height: 0;
+  }
   .brand span { display: none; }
   .top { padding: 0 12px; gap: 8px; }
   .top-actions { gap: 4px; }
@@ -442,30 +467,12 @@ td.ap { color: var(--gold); font-weight: 500; }
   align-self: flex-start;
   width: 100%;
 }
-.pie-svg { width: 168px; height: 168px; flex-shrink: 0; }
-.pie-legend {
+.pie-svg {
   width: 100%;
-  max-width: 300px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.pie-leg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--tx2);
-}
-.pie-dot {
-  width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0;
-}
-.pie-leg b {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-weight: 500;
-  color: var(--tx);
-  font-variant-numeric: tabular-nums;
+  max-width: 420px;
+  height: auto;
+  aspect-ratio: 360 / 240;
+  flex-shrink: 0;
 }
 .pie-nav {
   display: flex;
@@ -785,23 +792,51 @@ function fillRF(){
 
 const PIE_COLORS=['#c9a227','#3d9b6e','#5b8def','#c45c5c','#9b7bdf','#c9922a','#4db6ac','#8b93ab','#e07a5f','#81b29a'];
 function pieSVG(items){
-  /* items: [{label, value}] value = fraction 0..1, already sorted */
+  /* items: [{label, value}] — fatias com linhas e rótulos ao lado */
   const total=items.reduce((s,i)=>s+i.value,0)||1;
-  const cx=80,cy=80,r=72,ri=38;
-  let a0=-Math.PI/2, paths='';
+  const W=360, H=240, cx=W/2, cy=H/2, r=68, ri=36;
+  let a0=-Math.PI/2, paths='', labels='';
+  /* evita sobreposição vertical de rótulos do mesmo lado */
+  const usedL=[], usedR=[];
+  const placeY=(side,y)=>{
+    const arr=side==='L'?usedL:usedR;
+    let yy=y;
+    for(let k=0;k<12;k++){
+      if(arr.every(u=>Math.abs(u-yy)>=14)){arr.push(yy);return yy;}
+      yy+=(yy>=cy?1:-1)*14;
+      if(yy<16)yy=16; if(yy>H-16)yy=H-16;
+    }
+    arr.push(yy); return yy;
+  };
   items.forEach((it,idx)=>{
-    const a1=a0+(it.value/total)*Math.PI*2;
+    const frac=it.value/total;
+    const a1=a0+frac*Math.PI*2;
     const x0=cx+r*Math.cos(a0), y0=cy+r*Math.sin(a0);
     const x1=cx+r*Math.cos(a1), y1=cy+r*Math.sin(a1);
     const xi0=cx+ri*Math.cos(a1), yi0=cy+ri*Math.sin(a1);
     const xi1=cx+ri*Math.cos(a0), yi1=cy+ri*Math.sin(a0);
     const large=(a1-a0)>Math.PI?1:0;
-    const d=`M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} L${xi0} ${yi0} A${ri} ${ri} 0 ${large} 0 ${xi1} ${yi1} Z`;
-    paths+=`<path d="${d}" fill="${PIE_COLORS[idx%PIE_COLORS.length]}"/>`;
+    const col=PIE_COLORS[idx%PIE_COLORS.length];
+    const d=`M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L${xi0.toFixed(2)} ${yi0.toFixed(2)} A${ri} ${ri} 0 ${large} 0 ${xi1.toFixed(2)} ${yi1.toFixed(2)} Z`;
+    paths+=`<path d="${d}" fill="${col}"/>`;
+    /* linha + rótulo (sempre, mesmo fatias pequenas) */
+    const mid=(a0+a1)/2;
+    const bx=cx+(r+4)*Math.cos(mid), by=cy+(r+4)*Math.sin(mid);
+    const side=Math.cos(mid)>=0?'R':'L';
+    const lx=side==='R'?cx+r+28:cx-r-28;
+    let ly=cy+(r+22)*Math.sin(mid);
+    ly=placeY(side,ly);
+    const hx=side==='R'?lx-8:lx+8;
+    labels+=`<polyline points="${bx.toFixed(1)},${by.toFixed(1)} ${hx.toFixed(1)},${ly.toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)}" fill="none" stroke="${col}" stroke-width="1" opacity=".85"/>`;
+    const anchor=side==='R'?'start':'end';
+    const tx=side==='R'?lx+4:lx-4;
+    const pct=P(frac);
+    const name=it.label.length>18?it.label.slice(0,16)+'…':it.label;
+    labels+=`<text x="${tx.toFixed(1)}" y="${(ly-3).toFixed(1)}" text-anchor="${anchor}" fill="#e8eaef" font-size="10" font-family="IBM Plex Sans, system-ui, sans-serif">${esc(name)}</text>`;
+    labels+=`<text x="${tx.toFixed(1)}" y="${(ly+9).toFixed(1)}" text-anchor="${anchor}" fill="#9aa3b5" font-size="9" font-family="IBM Plex Mono, ui-monospace, monospace">${pct}</text>`;
     a0=a1;
   });
-  const legend=items.map((it,idx)=>`<div class="pie-leg"><span class="pie-dot" style="background:${PIE_COLORS[idx%PIE_COLORS.length]}"></span><span>${esc(it.label)}</span><b>${P(it.value/total)}</b></div>`).join('');
-  return `<svg class="pie-svg" viewBox="0 0 160 160" aria-hidden="true">${paths}</svg><div class="pie-legend">${legend}</div>`;
+  return `<svg class="pie-svg" viewBox="0 0 ${W} ${H}" aria-hidden="true">${paths}${labels}</svg>`;
 }
 
 function run(){
